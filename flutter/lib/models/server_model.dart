@@ -34,6 +34,8 @@ class ServerModel with ChangeNotifier {
   //bool hideCm = false;
   //修复隐藏CM功能：
   bool _hideCm = false;
+  //修复隐藏托盘功能：
+  bool _hideTray = false;
   int _connectStatus = 0; // Rendezvous Server status
   String _verificationMethod = "";
   String _temporaryPasswordLength = "";
@@ -82,6 +84,14 @@ class ServerModel with ChangeNotifier {
       notifyListeners();
     }
   }
+  //修复隐藏托盘图标功能：
+  bool get hideTray => _hideTray;
+  set hideTray(bool value) {
+    if (_hideTray != value) {
+      _hideTray = value;
+      notifyListeners();
+    }
+  }
 
   int get connectStatus => _connectStatus;
 
@@ -101,10 +111,13 @@ class ServerModel with ChangeNotifier {
 
   setVerificationMethod(String method) async {
     //修复隐藏CM功能：
-    await bind.mainSetOption(key: kOptionVerificationMethod, value: method);
+    //修复隐藏托盘图标功能：  
+  await bind.mainSetOption(key: kOptionVerificationMethod, value: method);
     if (method != kUsePermanentPassword) {
       await bind.mainSetOption(
           key: 'allow-hide-cm', value: bool2option('allow-hide-cm', false));
+      await bind.mainSetOption(
+          key: 'hide-tray', value: bool2option('hide-tray', false));
     }
   }
 
@@ -123,9 +136,12 @@ class ServerModel with ChangeNotifier {
   setApproveMode(String mode) async {
     await bind.mainSetOption(key: kOptionApproveMode, value: mode);
     //修复隐藏CM功能：
+    //修复隐藏托盘图标功能：
     if (mode != 'password') {
       await bind.mainSetOption(
           key: 'allow-hide-cm', value: bool2option('allow-hide-cm', false));
+      await bind.mainSetOption(
+          key: 'hide-tray', value: bool2option('hide-tray', false));
     }
   }
 
@@ -160,7 +176,14 @@ class ServerModel with ChangeNotifier {
         verificationMethod == kUsePermanentPassword)) {
       _hideCm = false;
     }
-
+    //修复隐藏托盘图标功能：
+    // initialize _hideTray at startup
+    _hideTray = option2bool(
+        'hide-tray', bind.mainGetOptionSync(key: 'hide-tray'));
+    if (!(approveMode == 'password' &&
+        verificationMethod == kUsePermanentPassword)) {
+      _hideTray = false;
+    }
     timerCallback() async {
       final connectionStatus =
           jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
@@ -258,6 +281,14 @@ class ServerModel with ChangeNotifier {
         verificationMethod == kUsePermanentPassword)) {
       hideCm = false;
     }
+    //修复隐藏托盘图标功能：
+    var hideTray = option2bool(
+        'hide-tray', await bind.mainGetOption(key: 'hide-tray'));
+    if (!(approveMode == 'password' &&
+        verificationMethod == kUsePermanentPassword)) {
+      hideTray = false;
+    }
+    
     if (_approveMode != approveMode) {
       _approveMode = approveMode;
       update = true;
@@ -302,6 +333,11 @@ class ServerModel with ChangeNotifier {
           await showCmWindow();
         }
       }
+      update = true;
+    }
+    //修复隐藏托盘图标功能：
+    if (_hideTray != hideTray) {
+      _hideTray = hideTray;
       update = true;
     }
     if (update) {

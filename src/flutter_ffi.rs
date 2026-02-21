@@ -954,6 +954,95 @@ pub fn main_get_error() -> String {
     get_error()
 }
 
+/// 通过 IPC 向 tray 进程发送隐藏/显示托盘图标消息
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn send_hide_tray_message(hide: bool) {
+    use crate::ipc::Data;
+    use hbb_common::tokio;
+    
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        if let Ok(mut conn) = crate::ipc::connect(1000, "hide-tray").await {
+            let _ = conn.send(&Data::HideTray(hide)).await;
+        }
+    });
+/*
+fn restart_tray() {
+    use hbb_common::config::Config;
+    use hbb_common::sysinfo::System;
+    
+    // Kill existing tray process
+    let app_name = crate::get_app_name();
+    log::info!("Restarting tray for app: {}", app_name);
+    
+    let mut system = System::new_all();
+    system.refresh_all();
+    
+    #[cfg(target_os = "windows")]
+    let process_name = format!("{}.exe", app_name).to_lowercase();
+////    {
+        let app_exe_name = format!("{}.exe", app_name);
+        let tray_pids = crate::platform::get_pids_of_process_with_args(&app_exe_name, &["--tray"]);
+        //添加隐藏托盘图标功能：
+        if !tray_pids.is_empty() {
+            log::info!("Killing {} tray processes for restart", tray_pids.len());
+            use sysinfo::{System, SystemExt, ProcessExt, Pid};
+            let s = System::new_all();
+            for pid in tray_pids {
+                if let Some(process) = s.process(pid) {
+                    process.kill();
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+////    
+    #[cfg(not(target_os = "windows"))]
+////    {
+        use sysinfo::{System, SystemExt, ProcessExt};
+        let mut system = System::new_all();
+        system.refresh_all();
+        
+        let name = app_name.to_lowercase();
+        for (pid, process) in system.processes() {
+            if process.name().to_lowercase() == name && process.cmd().iter().any(|arg| arg == "--tray") {
+                log::info!("Killing tray process {} for restart", pid);
+                process.kill();
+            }
+        }
+////
+    let process_name = app_name.to_lowercase();
+    
+    let mut killed_count = 0;
+    for (pid, process) in system.processes() {
+        let name_matches = process.name().to_lowercase() == process_name;
+        let has_tray_arg = process.cmd().len() == 2 && 
+                          process.cmd().iter().any(|arg| arg.to_lowercase() == "--tray");
+        
+        if name_matches && has_tray_arg {
+            log::info!("Killing tray process {} for restart", pid);
+            process.kill();
+            killed_count += 1;
+        }
+    }
+    
+    if killed_count > 0 {
+        log::info!("Killed {} tray process(es)", killed_count);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    
+    // Start tray if hide-tray is not set
+    let hide_tray = Config::get_option(config::keys::OPTION_HIDE_TRAY);
+    if hide_tray != "Y" {
+        log::info!("Starting tray process");
+        if let Err(e) = crate::run_me(vec!["--tray"]) {
+            log::error!("Failed to restart tray: {}", e);
+        }
+    } else {
+        log::info!("Tray is hidden, not starting");
+    }
+*/
+}
+
 pub fn main_show_option(_key: String) -> SyncReturn<bool> {
     #[cfg(target_os = "linux")]
     if _key.eq(config::keys::OPTION_ALLOW_LINUX_HEADLESS) {
@@ -997,7 +1086,16 @@ pub fn main_set_option(key: String, value: String) {
         #[cfg(any(target_os = "android", target_os = "ios", feature = "cli"))]
         crate::common::test_rendezvous_server();
     } else {
-        set_option(key, value.clone());
+        //set_option(key, value.clone());
+        set_option(key.clone(), value.clone());
+        // 检测到 hide-tray 选项变化时，通过 IPC 通知 tray 进程动态隐藏/显示图标
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if key.eq(config::keys::OPTION_HIDE_TRAY) {
+            let hide = value == "Y";
+            std::thread::spawn(move || {
+                send_hide_tray_message(hide);
+            });
+        }
     }
 }
 
